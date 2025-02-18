@@ -1,5 +1,15 @@
 import mongoose from "mongoose";
 
 const productoSchema = new mongoose.Schema({
-    id: {type: Number, required: true},
+    nombre: {type: String, required: true},
+    descripcion: {type: String, required: true},
+    price: {type: Number, required: true},
+    categoryId:{type: mongoose.Schema.Types.ObjectId, ref: 'categoria', required: true},
+    proveedorId:{type: mongoose.Schema.Types.ObjectId, ref: 'proveedores', required: true},
+    stock: {type: Number, required: true},
+    usuarioId: {type: mongoose.Schema.Types.ObjectId, ref: 'usuarios', required: true},
+    createdAt: {type: Date, default: Date.now},
+    updatedAt: {type: Date, default: Date.now},
 })
+
+export default mongoose.model("productos", productoSchema);
