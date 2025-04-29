@@ -1,4 +1,4 @@
-import Usuario from "../Models/usuarios";
+import Usuario from "../Models/usuarios.js";
 
 const usuariosController = {
   // Crear un nuevo usuario
