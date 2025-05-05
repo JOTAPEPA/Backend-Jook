@@ -1,4 +1,4 @@
-import Orden from "../Models/ordenes";
+import Orden from "../Models/ordenes.js";
 
 const ordenesController = {
   // Crear una nueva orden

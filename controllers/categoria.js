@@ -1,4 +1,4 @@
-import Categoria from "../Models/categoria";
+import Categoria from "../Models/categoria.js";
 
 const categoriaController = {
   // Crear una nueva categoría
@@ -53,6 +53,40 @@ const categoriaController = {
       res.status(500).json({ error: error.message });
     }
   },
+
+  // Activar una categoría
+  activarCategoria: async (req, res) => {
+    try {
+      const categoria = await Categoria.findByIdAndUpdate(
+        req.params.id,
+        { estado: true },
+        { new: true }
+      );
+      if (!categoria) {
+        return res.status(404).json({ message: "Categoría no encontrada" });
+      }
+      res.json({ message: "Categoría activada", categoria });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  },
+
+  // Inactivar una categoría
+  inactivarCategoria: async (req, res) => {
+    try {
+      const categoria = await Categoria.findByIdAndUpdate(
+        req.params.id,
+        { estado: false },
+        { new: true }
+      );
+      if (!categoria) {
+        return res.status(404).json({ message: "Categoría no encontrada" });
+      }
+      res.json({ message: "Categoría inactivada", categoria });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
 };
 
 export default categoriaController;

@@ -4,12 +4,12 @@ const productoSchema = new mongoose.Schema({
     nombre: {type: String, required: true},
     descripcion: {type: String, required: true},
     price: {type: Number, required: true},
-    categoryId:{type: mongoose.Schema.Types.ObjectId, ref: 'categoria', required: true},
-    proveedorId:{type: mongoose.Schema.Types.ObjectId, ref: 'proveedores', required: true},
+    categoryId:{type: mongoose.Schema.Types.ObjectId, ref: 'categoria'},
     stock: {type: Number, required: true},
-    usuarioId: {type: mongoose.Schema.Types.ObjectId, ref: 'usuarios', required: true},
+    images: [String], 
     createdAt: {type: Date, default: Date.now},
     updatedAt: {type: Date, default: Date.now},
 })
 
 export default mongoose.model("productos", productoSchema);
+   

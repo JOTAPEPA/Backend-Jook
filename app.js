@@ -1,11 +1,12 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
-import categoria from './routes/categoria';
-import inventario from './routes/inventario';
-import ordenes from './routes/ordenes';
-import productos from './routes/productos';
-import usuarios from './routes/usuarios';
+import cors from "cors";
+import categoria from './routes/categoria.js';
+import inventario from './routes/inventario.js';
+import ordenes from './routes/ordenes.js';
+import productos from './routes/productos.js';
+import usuarios from './routes/usuarios.js';
 
 dotenv.config();
 const app= express();
@@ -13,11 +14,11 @@ const PORT = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
-app.use("api/categoria",categoria);
-app.use("api/inventario",inventario);
-app.use("api/ordenes",ordenes);
-app.use("api/productos",productos);
-app.use("api/usuarios",usuarios);
+app.use("/api/categoria",categoria);
+app.use("/api/inventario",inventario);
+app.use("/api/ordenes",ordenes);
+app.use("/api/producto",productos);
+app.use("/api/usuario",usuarios);
 
 // 🔹 Solución a la advertencia de `strictQuery`
 mongoose.set('strictQuery', false);

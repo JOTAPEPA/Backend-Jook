@@ -1,15 +1,46 @@
 import Producto from "../Models/productos.js";
+import multer from "multer";
+
+// Configuración de Multer para guardar las imágenes
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, 'uploads/');  // Ruta donde se guardarán las imágenes
+  },
+  filename: (req, file, cb) => {
+    cb(null, `${Date.now()}-${file.originalname}`); // Nombre único para las imágenes
+  }
+});
+
+const upload = multer({ storage }).array('images', 4); // Aceptar hasta 4 imágenes
 
 const productosController = {
   // Crear un nuevo producto
   createProducto: async (req, res) => {
-    try {
-      const producto = new Producto(req.body);
-      await producto.save();
-      res.status(201).json({ message: "Producto creado exitosamente", producto });
-    } catch (error) {
-      res.status(500).json({ error: error.message });
-    }
+    upload(req, res, async (err) => {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+
+      try {
+        // Crear un objeto con los datos del producto y las imágenes
+        const { nombre, descripcion, price, categoryId, stock } = req.body;
+        const images = req.files ? req.files.map(file => file.path) : []; // Obtener las rutas de las imágenes
+
+        const producto = new Producto({
+          nombre,
+          descripcion,
+          price,
+          categoryId,
+          stock,
+          images, // Guardar las rutas de las imágenes
+        });
+
+        await producto.save();
+        res.status(201).json({ message: "Producto creado exitosamente", producto });
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
+    });
   },
 
   // Obtener todos los productos
