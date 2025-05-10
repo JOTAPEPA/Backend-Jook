@@ -12,7 +12,7 @@ import usuarios from './routes/usuarios.js';
 // 1️⃣ Cargar variables de entorno
 dotenv.config();
 
-
+const comodin = "nada"
 const app = express();
 const PORT = process.env.PORT || 5000;
 
