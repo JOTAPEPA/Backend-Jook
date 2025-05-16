@@ -3,6 +3,8 @@ import usuarios from "../Models/usuarios.js";
 import bcrypt from "bcryptjs";
 import ValidarJWT from "../Middlewares/ValidarJWT.js";
 import nodemailer from "nodemailer"; 
+import cloudinary from "../utils/cloudinary.js";
+import fs from "fs";  
 
 const httpUsuarios = {
   // Crear usuario
@@ -94,12 +96,7 @@ loginUsuario: async (req, res) => {
     // Responder con el token y los datos del usuario
     res.json({
       token,  // Enviar el token generado
-      user: {  // Enviar los datos del usuario
-        _id: usuario._id,
-        name: usuario.name,
-        email: usuario.email,
-        role: usuario.role
-      }
+      user: usuario
     });
   } catch (error) {
     console.log(error);
@@ -151,6 +148,65 @@ loginUsuario: async (req, res) => {
       res.status(500).json({ error: error.message });
     }
   },
+
+
+  uploadProfilePic: async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No se ha subido ninguna imagen" });
+      }
+  
+      // Subir la imagen a Cloudinary
+      const result = await cloudinary.uploader.upload(req.file.path, {
+        folder: "usuarios",
+      });
+  
+      // Eliminar archivo temporal
+      fs.unlinkSync(req.file.path);
+  
+      const userId = req.body.userId;
+      if (!userId) {
+        return res.status(400).json({ error: "Falta el ID del usuario" });
+      }
+  
+      // Guardar URL en el campo profilePic del usuario
+      const usuarioActualizado = await usuarios.findByIdAndUpdate(
+        userId,
+        { profilePic: result.secure_url, updatedAt: Date.now() },
+        { new: true }
+      );
+  
+      if (!usuarioActualizado) {
+        return res.status(404).json({ error: "Usuario no encontrado" });
+      }
+  
+      res.status(200).json({
+        success: true,
+        imageUrl: result.secure_url,
+      });
+    } catch (error) {
+      console.error("Error al subir la imagen:", error);
+      res.status(500).json({ error: "Error al subir la imagen" });
+    }
+  },
+
+  // Obtener perfil del usuario autenticado
+getProfile: async (req, res) => {
+  try {
+    const userId = req.params.id; // viene del middleware ValidarJWT
+    const usuario = await usuarios.findById(userId);
+    if (!usuario) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+    res.json(usuario);
+  } catch (error) {
+    res.status(800).json({ error: "Error al obtener el perfil" });
+  }
+}
+
+  
 };
+
+
 
 export default httpUsuarios;
