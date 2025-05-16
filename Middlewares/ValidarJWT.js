@@ -24,33 +24,33 @@ const generarJWT = (uid) => {
 
 // Función para validar JWT
 const validarJWT = async (req, res, next) => {
-    const token = req.header("x-token");
+    const authHeader = req.header("Authorization");
+    const token = authHeader?.startsWith("Bearer ") ? authHeader.split(" ")[1] : null;
+
     if (!token) {
-        return res.status(401).json({
-            msg: "No hay token en la peticion"
-        });
+        return res.status(401).json({ msg: "No hay token en la petición" });
     }
+
     try {
         const { uid } = jwt.verify(token, process.env.SECRETORPRIVATEKEY);
-        let usuario = await Usuarios.findById(uid);
+        const usuario = await Usuarios.findById(uid).select("estado");
+
         if (!usuario) {
-            return res.status(401).json({
-                msg: "Token no valido - usuario no existe"
-            });
+            return res.status(401).json({ msg: "Token no válido - usuario no existe" });
         }
+
         if (!usuario.estado) {
-            return res.status(401).json({
-                msg: "Token no valido - usuario inactivo"
-            });
+            return res.status(401).json({ msg: "Token no válido - usuario inactivo" });
         }
+
         req.usuario = usuario;
         next();
     } catch (error) {
         console.log(error);
-        res.status(401).json({
-            msg: "Token no valido"
-        });
+        res.status(401).json({ msg: "Token no válido" });
     }
 };
+
+
 
 export default { generarJWT, validarJWT };
