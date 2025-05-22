@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import usuarios from "../Models/usuarios.js";
+import productos from "../Models/productos.js";
 import bcrypt from "bcryptjs";
 import ValidarJWT from "../Middlewares/ValidarJWT.js";
 import nodemailer from "nodemailer"; 
@@ -202,7 +203,55 @@ getProfile: async (req, res) => {
   } catch (error) {
     res.status(800).json({ error: "Error al obtener el perfil" });
   }
-}
+},
+
+//agregar y quitar favorios
+toggleFavorito: async (req, res) => {
+  try {
+    const userId = req.usuario.id; // viene desde ValidarJWT middleware
+    const { productId } = req.params;
+
+    const usuario = await usuarios.findById(userId);
+    if (!usuario) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+
+    const index = usuario.favoritos.indexOf(productId);
+
+    if (index > -1) {
+      // Ya está en favoritos: quitar
+      usuario.favoritos.splice(index, 1);
+      await usuario.save();
+      return res.json({ mensaje: "Producto eliminado de favoritos" });
+    } else {
+      // No está: agregar
+      usuario.favoritos.push(productId);
+      await usuario.save();
+      return res.json({ mensaje: "Producto agregado a favoritos" });
+    }
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: "Error al actualizar favoritos" });
+  }
+},
+
+// listar favoritos 
+getFavoritos: async (req, res) => {
+  try {
+    const userId = req.usuario.id;
+
+    const usuario = await usuarios.findById(userId).populate("favoritos");
+
+    if (!usuario) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+
+    res.json(usuario.favoritos);
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: "Error al obtener favoritos" });
+  }
+},
 
   
 };
