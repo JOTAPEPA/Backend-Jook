@@ -9,13 +9,19 @@ const productoSchema = new mongoose.Schema({
   estado: { type: String, enum: ['activo', 'inactivo'], default: 'activo' },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
-
-  // Relaciones y clasificación
   categoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'Categoria' },
+  marca: { type: String, required: true },
+  tipo: { type: String, required: true },
 
-  // Nuevos campos jerárquicos
-  marca: { type: String, required: true },      // Ej: Samsung
-  tipo: { type: String, required: true },       // Ej: Electrónicos
+  reviews: [
+    {
+      user: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario', required: true },
+      name: { type: String },
+      comment: { type: String, required: true },
+      rating: { type: Number, min: 1, max: 5, required: true },
+      createdAt: { type: Date, default: Date.now },
+    }
+  ]
 });
 
 export default mongoose.model("productos", productoSchema);
