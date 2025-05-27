@@ -52,14 +52,13 @@ const productosController = {
     });
   },
 
-
   buscarProductos: async (req, res) => {
     const { query } = req.query;
-  
+
     if (!query) {
       return res.status(400).json({ message: "Se requiere un término de búsqueda" });
     }
-  
+
     try {
       const results = await Producto.find({
         $or: [
@@ -70,11 +69,11 @@ const productosController = {
           { subtipo: { $regex: query, $options: 'i' } },
         ],
       }).populate("categoryId");
-  
+
       if (results.length === 0) {
         return res.status(404).json({ message: "No se encontraron productos para el término buscado" });
       }
-  
+
       res.json(results);
     } catch (error) {
       console.error("Error al buscar productos:", error);
@@ -82,29 +81,67 @@ const productosController = {
     }
   },
 
-  // Obtener todos los productos
+  // Obtener todos los productos (se puede modificar para filtrar por marca)
   getProductos: async (req, res) => {
     try {
-      const productos = await Producto.find().populate("categoryId");
+      const { marca } = req.query; // Obtener el parámetro de marca de la URL
+      let query = {};
+
+      if (marca) {
+        query.marca = { $regex: marca, $options: 'i' }; // Filtrar por marca (insensible a mayúsculas/minúsculas)
+      }
+
+      const productos = await Producto.find(query).populate("categoryId");
       res.json(productos);
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
   },
 
-  
+
+  getTodasLasMarcas: async (req, res) => {
+    try {
+      // Obtenemos solo el campo 'marca' de todos los productos para mayor eficiencia
+      const productos = await Producto.find({}, 'marca');
+      // Extraemos las marcas únicas y filtramos valores nulos/vacíos
+      const marcasUnicas = [...new Set(productos.map(p => p.marca).filter(Boolean))];
+      res.json(marcasUnicas); // Esto devolverá un array de strings (nombres de marcas)
+    } catch (error) {
+      console.error('Error al obtener todas las marcas:', error);
+      res.status(500).json({ message: 'Error interno del servidor al obtener marcas.' });
+    }
+  },
+
+
+  // Nuevo controlador para obtener productos por marca específica
+  getProductosPorMarca: async (req, res) => {
+    try {
+      const { marca } = req.params; // Obtener la marca de los parámetros de la URL
+      if (!marca) {
+        return res.status(400).json({ message: "Se requiere un nombre de marca para filtrar" });
+      }
+      const productos = await Producto.find({ marca: { $regex: marca, $options: 'i' } }).populate("categoryId");
+      if (!productos || productos.length === 0) {
+        return res.status(404).json({ message: `No se encontraron productos para la marca "${marca}"` });
+      }
+      res.json(productos);
+    } catch (error) {
+      console.error("Error al obtener productos por marca:", error);
+      res.status(500).json({ error: "Error al obtener productos por marca" });
+    }
+  },
+
   // Obtener un producto por ID
   getProductoById: async (req, res) => {
     try {
       const { id } = req.params;
       const producto = await Producto.findById(id)
-        .populate("categoryId") // Esto ya lo tienes y funciona para la categoría
+        .populate("categoryId")
         .populate({
           path: 'reviews',
           populate: {
             path: 'user',
-            select: 'name',
-            select: 'name profilePic' 
+            select: 'name profilePic'
           }
         });
 
@@ -123,7 +160,7 @@ const productosController = {
       if (err) return res.status(500).json({ error: err.message });
 
       try {
-        const { nombre, descripcion, price, categoryId, stock, marca, tipo,  } = req.body;
+        const { nombre, descripcion, price, categoryId, stock, marca, tipo, } = req.body;
         const files = req.files;
         const imageUrls = [];
 
@@ -200,21 +237,21 @@ const productosController = {
     const { comment, rating } = req.body;
     const userId = req.usuario._id;
     const userName = req.usuario.name;
-  
+
     try {
       const producto = await Producto.findById(id);
       if (!producto) return res.status(404).json({ message: "Producto no encontrado" });
-  
+
       const nuevaReseña = {
         user: userId,
         name: userName, // Usando userName directamente del req.usuario
         comment,
         rating,
       };
-  
+
       producto.reviews.push(nuevaReseña);
       await producto.save();
-  
+
       res.status(201).json({ message: "Reseña agregada", review: nuevaReseña });
     } catch (error) {
       res.status(500).json({ error: error.message });
@@ -268,8 +305,6 @@ const productosController = {
       res.status(500).json({ error: "Error al obtener productos por categoría" });
     }
   },
-
-  
 };
 
 export default productosController;
