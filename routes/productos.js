@@ -15,6 +15,7 @@ router.put('/id/:id/inactivo', productosController.inactivarProducto);
 router.post("/resena/:id", ValidarJWT.validarJWT, productosController.agregarReseña);
 router.delete("/:id/resena/:reviewId", ValidarJWT.validarJWT, productosController.eliminarReseña);
 router.get('/categoria/:categoriaId', productosController.getProductosPorCategoria);
-//cambio
+router.get('/marca/:marca', productosController.getProductosPorMarca);
+router.get('/marcas', productosController.getTodasLasMarcas); 
 
 export default router;
