@@ -17,5 +17,6 @@ router.delete("/:id/resena/:reviewId", ValidarJWT.validarJWT, productosControlle
 router.get('/categoria/:categoriaId', productosController.getProductosPorCategoria);
 router.get('/marca/:marca', productosController.getProductosPorMarca);
 router.get('/marcas', productosController.getTodasLasMarcas); 
+router.get('/tipos-de-uso', productosController.getTodosLosTiposDeUso); 
 
 export default router;
