@@ -51,10 +51,9 @@ const productosController = {
       }
     });
   },
-
   buscarProductos: async (req, res) => {
     // Desestructuramos todos los posibles parámetros de consulta que enviará el frontend
-    const { search, categoria, marca, precioMin, precioMax, sortBy } = req.query;
+    const { search, categoria, marca, precioMin, precioMax, sortBy, tipo } = req.query; // <-- ¡Añadido tipoUso!
 
     let query = {}; // Este objeto contendrá los criterios de búsqueda para MongoDB
 
@@ -66,21 +65,22 @@ const productosController = {
         { descripcion: { $regex: search, $options: 'i' } },
         { marca: { $regex: search, $options: 'i' } },
         { tipo: { $regex: search, $options: 'i' } },
-        { subtipo: { $regex: search, $options: 'i' } },
       ];
     }
 
-    // 2. Manejar el filtro por categoría
+    // 2. Manejar el filtro por categoría (acepta tanto ID como nombre)
     if (categoria) {
       try {
-        const categoriaObj = await Categoria.findOne({ nombre: categoria });
-        if (categoriaObj) {
-          query.categoriaId = categoriaObj._id; // Asumiendo que tu producto tiene un campo 'categoriaId' que referencia a 'Categoria'
+        // Si el valor parece un ObjectId válido, lo usamos directamente
+        if (/^[a-fA-F0-9]{24}$/.test(categoria)) {
+          query.categoryId = categoria;
         } else {
-          // Si la categoría no se encuentra, podrías:
-          // a) Ignorar el filtro: console.warn(`Categoría '${categoria}' no encontrada.`);
-          // b) Devolver un 404 para esa categoría específica:
-          return res.status(404).json({ message: `Categoría '${categoria}' no encontrada.` });
+          const categoriaObj = await Categoria.findOne({ name: categoria }); // Asegúrate que el campo es 'name' o 'nombre'
+          if (categoriaObj) {
+            query.categoryId = categoriaObj._id;
+          } else {
+            return res.status(404).json({ message: `Categoría '${categoria}' no encontrada.` });
+          }
         }
       } catch (catError) {
         console.error("Error al buscar categoría:", catError);
@@ -93,9 +93,14 @@ const productosController = {
       query.marca = { $regex: marca, $options: 'i' };
     }
 
-    // 4. Manejar el filtro por rango de precio
+    // 4. Manejar el filtro por tipo 
+    if (tipo) { 
+      query.tipo = { $regex: tipo, $options: 'i' }; 
+    }
+
+    // 5. Manejar el filtro por rango de precio
     if (precioMin || precioMax) {
-      query.price = {}; // Asumo que el campo de precio en tu modelo es 'price'
+      query.price = {};
       if (precioMin) {
         query.price.$gte = parseFloat(precioMin);
       }
@@ -104,43 +109,47 @@ const productosController = {
       }
     }
 
-    let sortOptions = {}; // Objeto para el ordenamiento
-    // 5. Manejar el ordenamiento
+    let sortOptions = {};
+    // 6. Manejar el ordenamiento
     if (sortBy) {
       switch (sortBy) {
         case 'Precio: Menor a Mayor':
-          sortOptions.price = 1; // 1 para ascendente
+          sortOptions.price = 1;
           break;
         case 'Precio: Mayor a Menor':
-          sortOptions.price = -1; // -1 para descendente
+          sortOptions.price = -1;
           break;
         case 'Destacados':
-          // Si tienes un campo 'isFeatured' o similar en tu modelo:
-          // sortOptions.isFeatured = -1; // Ordenar destacados primero
-          // O una lógica más compleja de relevancia
+          // Lógica para ordenar por destacados
           break;
         default:
-          // No hacer nada o un ordenamiento predeterminado
           break;
       }
     }
 
     try {
-      // Si no se pasó ningún filtro, 'query' estará vacío y find({}) devolverá todos los productos.
       const results = await Producto.find(query).sort(sortOptions).populate("categoryId");
-
-      // Opcional: Si quieres devolver un 404 si no hay productos *después* de aplicar filtros
-      // if (Object.keys(query).length > 0 && results.length === 0) {
-      //   return res.status(404).json({ message: "No se encontraron productos con los filtros aplicados." });
-      // }
-      // Pero para un catálogo, es mejor devolver un array vacío y que el frontend muestre "No se encontraron productos".
-
       res.json(results);
     } catch (error) {
       console.error("Error al buscar productos:", error);
       res.status(500).json({ error: "Error al realizar la búsqueda de productos" });
     }
   },
+
+
+  // Opcional: Función para obtener todos los tipos de uso para poblar el frontend
+  getTodosLosTiposDeUso: async (req, res) => {
+    try {
+      console.log("Intentando obtener tipos de uso (desde campo 'tipo')...");
+      const tiposDeUso = await Producto.distinct('tipo'); 
+      console.log("Tipos de uso obtenidos:", tiposDeUso);
+      res.json(tiposDeUso);
+    } catch (error) {
+      console.error('Error al obtener tipos de uso:', error);
+      res.status(500).json({ msg: 'Error del servidor al obtener tipos de uso' });
+    }
+  },
+
 
   // Obtener todos los productos (se puede modificar para filtrar por marca)
   getProductos: async (req, res) => {
