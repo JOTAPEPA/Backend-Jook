@@ -1,4 +1,6 @@
 import Producto from "../Models/productos.js";
+import Categoria from "../Models/categoria.js";
+
 import multer from "multer";
 import fs from "fs";
 import cloudinary from "../utils/cloudinary.js";
@@ -51,90 +53,88 @@ const productosController = {
       }
     });
   },
+
   buscarProductos: async (req, res) => {
-    // Desestructuramos todos los posibles parámetros de consulta que enviará el frontend
-    const { search, categoria, marca, precioMin, precioMax, sortBy, tipo } = req.query; // <-- ¡Añadido tipoUso!
+    const { search, marca, precioMin, precioMax, sortBy, tipo } = req.query;
+    const safeSearch = String(search || '');
+    let query = {};
 
-    let query = {}; // Este objeto contendrá los criterios de búsqueda para MongoDB
-
-    // 1. Manejar la búsqueda general por texto (si se proporciona 'search')
     if (search) {
-      // Usamos '$or' para buscar el término 'search' en varios campos
-      query.$or = [
-        { nombre: { $regex: search, $options: 'i' } },
-        { descripcion: { $regex: search, $options: 'i' } },
-        { marca: { $regex: search, $options: 'i' } },
-        { tipo: { $regex: search, $options: 'i' } },
-      ];
+        query.$or = [
+            { nombre: { $regex: safeSearch, $options: 'i' } },
+            { descripcion: { $regex: safeSearch, $options: 'i' } },
+            { marca: { $regex: safeSearch, '$options': 'i' } }, // Corregido: tipo a marca para evitar conflicto en caso de que 'marca' también sea un campo search
+            { tipo: { $regex: safeSearch, '$options': 'i' } },
+        ];
     }
 
-    // 2. Manejar el filtro por categoría (acepta tanto ID como nombre)
-    if (categoria) {
-      try {
-        // Si el valor parece un ObjectId válido, lo usamos directamente
-        if (/^[a-fA-F0-9]{24}$/.test(categoria)) {
-          query.categoryId = categoria;
-        } else {
-          const categoriaObj = await Categoria.findOne({ name: categoria }); // Asegúrate que el campo es 'name' o 'nombre'
-          if (categoriaObj) {
-            query.categoryId = categoriaObj._id;
-          } else {
-            return res.status(404).json({ message: `Categoría '${categoria}' no encontrada.` });
-          }
+    const categoriaId = req.query.categoria || req.query.categoryId;
+
+    if (categoriaId) {
+        try {
+            if (/^[a-fA-F0-9]{24}$/.test(categoriaId)) {
+                // Si parece un ObjectId, úsalo directamente para el campo categoryId en la query
+                query.categoryId = categoriaId; // <-- ¡CAMBIO APLICADO AQUÍ!
+            } else {
+                // Si no parece un ObjectId, busca la categoría por nombre y luego usa su _id
+                const categoriaObj = await Categoria.findOne({ name: categoriaId });
+                if (categoriaObj) {
+                    query.categoryId = categoriaObj._id; // <-- ¡CAMBIO APLICADO AQUÍ!
+                } else {
+                    return res.status(404).json({ message: `Categoría '${categoriaId}' no encontrada.` });
+                }
+            }
+        } catch (catError) {
+            console.error("Error al buscar categoría:", catError);
+            return res.status(500).json({ message: "Error interno al procesar la categoría." });
         }
-      } catch (catError) {
-        console.error("Error al buscar categoría:", catError);
-        return res.status(500).json({ message: "Error interno al procesar la categoría." });
-      }
     }
 
-    // 3. Manejar el filtro por marca
-    if (marca) {
-      query.marca = { $regex: marca, $options: 'i' };
-    }
+    if (marca) query.marca = { $regex: marca, $options: 'i' };
+    if (tipo) query.tipo = { $regex: tipo, '$options': 'i' }; // Corregido: Añadido '$options': 'i' para consistencia
 
-    // 4. Manejar el filtro por tipo 
-    if (tipo) { 
-      query.tipo = { $regex: tipo, $options: 'i' }; 
-    }
-
-    // 5. Manejar el filtro por rango de precio
     if (precioMin || precioMax) {
-      query.price = {};
-      if (precioMin) {
-        query.price.$gte = parseFloat(precioMin);
-      }
-      if (precioMax) {
-        query.price.$lte = parseFloat(precioMax);
-      }
+        query.price = {};
+        if (precioMin) query.price.$gte = parseFloat(precioMin);
+        if (precioMax) query.price.$lte = parseFloat(precioMax);
     }
 
     let sortOptions = {};
-    // 6. Manejar el ordenamiento
     if (sortBy) {
-      switch (sortBy) {
-        case 'Precio: Menor a Mayor':
-          sortOptions.price = 1;
-          break;
-        case 'Precio: Mayor a Menor':
-          sortOptions.price = -1;
-          break;
-        case 'Destacados':
-          // Lógica para ordenar por destacados
-          break;
-        default:
-          break;
-      }
+        if (sortBy === 'Precio: Menor a Mayor') sortOptions.price = 1;
+        else if (sortBy === 'Precio: Mayor a Menor') sortOptions.price = -1;
     }
 
     try {
-      const results = await Producto.find(query).sort(sortOptions).populate("categoryId");
-      res.json(results);
+        console.log("Query final:", query);
+        // Usamos populate para traer la información completa de la categoría si es necesario para el frontend
+        const productos = await Producto.find(query).sort(sortOptions).populate('categoryId');
+
+        const sugerenciasMarca = search
+            ? await Producto.aggregate([
+                { $match: { marca: { $regex: safeSearch, $options: 'i', $ne: null } } },
+                { $group: { _id: "$marca" } },
+                { $limit: 5 }
+            ])
+            : [];
+
+        const sugerenciasCategoria = search
+            ? await Categoria.find({
+                name: { $regex: safeSearch, $options: 'i' }
+            }).limit(5)
+            : [];
+
+        res.json({
+            productos,
+            sugerenciasMarca: sugerenciasMarca.map(m => m._id),
+            sugerenciasCategoria
+        });
+
     } catch (error) {
-      console.error("Error al buscar productos:", error);
-      res.status(500).json({ error: "Error al realizar la búsqueda de productos" });
+        console.error("Error completo:", error);
+        res.status(500).json({ error: "Error al realizar la búsqueda de productos" });
     }
-  },
+},
 
 
   // Opcional: Función para obtener todos los tipos de uso para poblar el frontend
