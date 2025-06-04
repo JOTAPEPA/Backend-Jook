@@ -10,9 +10,8 @@ const productoSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
   categoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'Categoria' },
-  marca: { type: String, required: true },
-  tipo: { type: String, required: true },
-
+  marca: {  type: mongoose.Schema.Types.ObjectId, ref: 'Marca' },
+  tipo: {  type: mongoose.Schema.Types.ObjectId, ref: 'Tipo'},
   reviews: [
     {
       user: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario', required: true },

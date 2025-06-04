@@ -6,7 +6,9 @@ import cors from "cors";
 import categoria from './routes/categoria.js';
 import inventario from './routes/inventario.js';
 import ordenes from './routes/ordenes.js';
-import productos from './routes/productos.js'; // Assuming you have a productos.js route
+import productos from './routes/productos.js'; 
+import marca from './routes/marca.js';
+import tipo from './routes/tipo.js';
 import usuarios from './routes/usuarios.js';
 
 // 1️⃣ Cargar variables de entorno
@@ -25,7 +27,10 @@ app.use("/api/categoria", categoria);
 app.use("/api/inventario", inventario);
 app.use("/api/ordenes", ordenes);
 app.use("/api/producto", productos);
+app.use("/api/marca", marca);
+app.use("/api/tipo", tipo)
 app.use("/api/usuario", usuarios);
+
 
 
 mongoose.set('strictQuery', false);
