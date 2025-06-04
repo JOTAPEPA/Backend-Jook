@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { check } from "express-validator";
 import usuariosController from "../controllers/usuarios.js";
-import multer from "multer"; 
 import ValidarJWT from '../Middlewares/ValidarJWT.js';
+import multer from "multer"; 
 
 const upload = multer({ dest: "uploads/" }); 
 
