@@ -90,24 +90,25 @@ const productosController = {
 
   // Buscar productos con filtros avanzados
   buscarProductos: async (req, res) => {
-    const { search, marca, precioMin, precioMax, sortBy, tipo, categoria } = req.query; // Añadido 'categoria' para ser explícito
+    const { search, marca, precioMin, precioMax, sortBy, tipo, categoria } = req.query;
     const safeSearch = String(search || '');
     let query = {};
-
+  
     if (search) {
       query.$or = [
         { nombre: { $regex: safeSearch, $options: 'i' } },
         { descripcion: { $regex: safeSearch, $options: 'i' } },
       ];
     }
-
-    // Filtro por categoría (puede venir como 'categoria' o 'categoryId')
+  
+    // Filtro por categoría
     const categoriaIdParam = categoria || req.query.categoryId;
     if (categoriaIdParam) {
       try {
         if (mongoose.Types.ObjectId.isValid(categoriaIdParam)) {
           query.categoryId = categoriaIdParam;
         } else {
+          // Aquí usas 'name' porque en categoría el campo es 'name'
           const categoriaObj = await Categoria.findOne({ name: { $regex: categoriaIdParam, $options: 'i' } });
           if (categoriaObj) {
             query.categoryId = categoriaObj._id;
@@ -120,14 +121,15 @@ const productosController = {
         return res.status(500).json({ message: "Error interno al procesar la categoría." });
       }
     }
-
+  
     // Filtro por marca
     if (marca) {
       try {
         if (mongoose.Types.ObjectId.isValid(marca)) {
           query.marca = marca;
         } else {
-          const marcaObj = await Marca.findOne({ name: { $regex: marca, $options: 'i' } });
+          // En marca usas 'nombre'
+          const marcaObj = await Marca.findOne({ nombre: { $regex: marca, $options: 'i' } });
           if (marcaObj) {
             query.marca = marcaObj._id;
           } else {
@@ -139,14 +141,15 @@ const productosController = {
         return res.status(500).json({ message: "Error interno al procesar la marca." });
       }
     }
-
-    // Filtro por tipo de uso
+  
+    // Filtro por tipo
     if (tipo) {
       try {
         if (mongoose.Types.ObjectId.isValid(tipo)) {
           query.tipo = tipo;
         } else {
-          const tipoObj = await Tipo.findOne({ name: { $regex: tipo, $options: 'i' } });
+          // En tipo usas 'nombre'
+          const tipoObj = await Tipo.findOne({ nombre: { $regex: tipo, $options: 'i' } });
           if (tipoObj) {
             query.tipo = tipoObj._id;
           } else {
@@ -158,21 +161,21 @@ const productosController = {
         return res.status(500).json({ message: "Error interno al procesar el tipo." });
       }
     }
-
-    // Filtro por rango de precios
+  
+    // Filtro por precio
     if (precioMin || precioMax) {
       query.price = {};
       if (precioMin) query.price.$gte = parseFloat(precioMin);
       if (precioMax) query.price.$lte = parseFloat(precioMax);
     }
-
-    // Opciones de ordenamiento
+  
+    // Ordenamiento
     let sortOptions = {};
     if (sortBy) {
       if (sortBy === 'Precio: Menor a Mayor') sortOptions.price = 1;
       else if (sortBy === 'Precio: Mayor a Menor') sortOptions.price = -1;
     }
-
+  
     try {
       console.log("Query final (buscarProductos):", query);
       const productos = await Producto.find(query)
@@ -180,31 +183,32 @@ const productosController = {
         .populate('categoryId')
         .populate('marca')
         .populate('tipo');
-
-      // Sugerencias (útiles para autocompletar)
+  
+      // Sugerencias (autocomplete)
       const sugerenciasMarca = search
-        ? await Marca.find({ name: { $regex: safeSearch, $options: 'i' } }).limit(5)
+        ? await Marca.find({ nombre: { $regex: safeSearch, $options: 'i' } }).limit(5)
         : [];
       const sugerenciasCategoria = search
         ? await Categoria.find({ name: { $regex: safeSearch, $options: 'i' } }).limit(5)
         : [];
       const sugerenciasTipo = search
-        ? await Tipo.find({ name: { $regex: safeSearch, $options: 'i' } }).limit(5)
+        ? await Tipo.find({ nombre: { $regex: safeSearch, $options: 'i' } }).limit(5)
         : [];
-
+  
       res.json({
         productos,
-        sugerenciasMarca: sugerenciasMarca.map(m => ({ _id: m._id, name: m.name, image: m.image })),
+        sugerenciasMarca: sugerenciasMarca.map(m => ({ _id: m._id, nombre: m.nombre, image: m.image })),
         sugerenciasCategoria,
-        sugerenciasTipo: sugerenciasTipo.map(t => ({ _id: t._id, name: t.name, image: t.image }))
+        sugerenciasTipo: sugerenciasTipo.map(t => ({ _id: t._id, nombre: t.nombre, image: t.image }))
       });
-
+  
     } catch (error) {
       console.error("Error completo (buscarProductos):", error);
       res.status(500).json({ error: "Error al realizar la búsqueda de productos" });
     }
   },
-
+  
+  
   // Obtener un producto por ID
   getProductoById: async (req, res) => {
     try {

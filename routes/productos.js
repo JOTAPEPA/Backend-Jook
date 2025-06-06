@@ -22,13 +22,9 @@ router.get('/id/:id', productosController.getProductoById);
 router.put('/id/:id/:estado', productosController.changeProductoEstado); 
 router.post('/resena/:id', ValidarJWT.validarJWT, productosController.agregarReseña);
 router.delete('/:id/resena/:reviewId', ValidarJWT.validarJWT, productosController.eliminarReseña);
-
 router.get('/categoria/:categoriaId', productosController.getProductosPorCategoria);
-
 router.get('/marca/:id/productos', productosController.getProductosDeMarcaId); 
-
 router.get('/marca/:id', productosController.getMarcaById); 
-
 router.get('/marcas', productosController.getTodasLasMarcas);
 router.get('/tipos-de-uso', productosController.getTodosLosTiposDeUso);
 
