@@ -1,7 +1,8 @@
+import mongoose from 'mongoose';
 import Producto from "../Models/productos.js";
 import Categoria from "../Models/categoria.js";
-import Marca from "../Models/marca.js"; // Suponiendo que tienes un modelo para Marca
-import Tipo from "../Models/tipo.js"; // Suponiendo que tienes un modelo para Tipo
+import Marca from "../Models/marca.js"; // Importa el modelo Marca
+import Tipo from "../Models/tipo.js";
 import multer from "multer";
 import fs from "fs";
 import cloudinary from "../utils/cloudinary.js";
@@ -16,49 +17,80 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ storage }).array('images', 4); // hasta 4 imágenes
+// Este 'upload' es para la creación/actualización de productos (hasta 4 imágenes)
+const upload = multer({ storage }).array('images', 4);
 
 const productosController = {
   // Crear producto
   createProducto: async (req, res) => {
     try {
       const { nombre, descripcion, price, categoryId, stock, marca, tipo } = req.body;
-      // req.files es un objeto porque usas fields()
-      // Ejemplo: req.files.images es un array con hasta 4 archivos
-      // req.files.marcaImagen es un array con hasta 1 archivo
-  
-      const files = req.files.images || [];
+
+      const files = req.files || []; // Asegúrate de que req.files exista
       const imageUrls = [];
-  
-      for (const file of files) {
-        const result = await cloudinary.uploader.upload(file.path, { folder: 'productos' });
-        imageUrls.push(result.secure_url);
-        fs.unlinkSync(file.path);
+
+      // Si hay archivos para subir
+      if (files.length > 0) {
+        for (const file of files) {
+          const result = await cloudinary.uploader.upload(file.path, { folder: 'productos' });
+          imageUrls.push(result.secure_url);
+          fs.unlinkSync(file.path); // Eliminar el archivo temporal
+        }
       }
-  
-      // Si quieres manejar también marcaImagen, haz lo mismo aquí
-  
+
       const producto = new Producto({
         nombre,
         descripcion,
         price,
         categoryId,
         stock,
-        marca,
-        tipo,
+        marca, // Asegúrate de que este 'marca' sea un ID de Marca
+        tipo,  // Asegúrate de que este 'tipo' sea un ID de Tipo
         images: imageUrls,
       });
-  
+
       await producto.save();
       res.status(201).json({ message: "Producto creado exitosamente", producto });
     } catch (error) {
+      console.error("Error al crear producto:", error);
       res.status(500).json({ error: error.message });
     }
   },
-                                                                                                               
 
+  // Obtener todos los productos (con posible filtro por marca en query)
+  getProductos: async (req, res) => {
+    try {
+      const { marca } = req.query;
+      let query = {};
+
+      if (marca) {
+        // Permitir filtrar por ID o nombre de marca en la query string
+        if (mongoose.Types.ObjectId.isValid(marca)) {
+          query.marca = marca;
+        } else {
+          const marcaObj = await Marca.findOne({ name: { $regex: marca, $options: 'i' } }); // Búsqueda por nombre
+          if (marcaObj) {
+            query.marca = marcaObj._id;
+          } else {
+            return res.status(404).json({ message: `Marca '${marca}' no encontrada para el filtro.` });
+          }
+        }
+      }
+
+      const productos = await Producto.find(query)
+        .populate("categoryId")
+        .populate("marca")
+        .populate("tipo");
+      res.json(productos);
+    } catch (error) {
+      console.error("Error al obtener productos:", error);
+      res.status(500).json({ error: error.message });
+    }
+  },
+
+  // Buscar productos con filtros avanzados
   buscarProductos: async (req, res) => {
-    const { search, marca, precioMin, precioMax, sortBy, tipo } = req.query;
+    const { search, marca, precioMin, precioMax, sortBy, tipo, categoria } = req.query; // Añadido 'categoria' para ser explícito
     const safeSearch = String(search || '');
     let query = {};
 
@@ -69,18 +101,18 @@ const productosController = {
       ];
     }
 
-    const categoriaId = req.query.categoria || req.query.categoryId;
-
-    if (categoriaId) {
+    // Filtro por categoría (puede venir como 'categoria' o 'categoryId')
+    const categoriaIdParam = categoria || req.query.categoryId;
+    if (categoriaIdParam) {
       try {
-        if (mongoose.Types.ObjectId.isValid(categoriaId)) { // Usar mongoose.Types.ObjectId.isValid
-          query.categoryId = categoriaId;
+        if (mongoose.Types.ObjectId.isValid(categoriaIdParam)) {
+          query.categoryId = categoriaIdParam;
         } else {
-          const categoriaObj = await Categoria.findOne({ name: categoriaId });
+          const categoriaObj = await Categoria.findOne({ name: { $regex: categoriaIdParam, $options: 'i' } });
           if (categoriaObj) {
             query.categoryId = categoriaObj._id;
           } else {
-            return res.status(404).json({ message: `Categoría '${categoriaId}' no encontrada.` });
+            return res.status(404).json({ message: `Categoría '${categoriaIdParam}' no encontrada.` });
           }
         }
       } catch (catError) {
@@ -89,13 +121,13 @@ const productosController = {
       }
     }
 
-    // --- CAMBIOS PARA MARCA Y TIPO ---
+    // Filtro por marca
     if (marca) {
       try {
         if (mongoose.Types.ObjectId.isValid(marca)) {
           query.marca = marca;
         } else {
-          const marcaObj = await Marca.findOne({ name: marca }); // Asume que el modelo Marca tiene un campo 'name'
+          const marcaObj = await Marca.findOne({ name: { $regex: marca, $options: 'i' } });
           if (marcaObj) {
             query.marca = marcaObj._id;
           } else {
@@ -108,12 +140,13 @@ const productosController = {
       }
     }
 
+    // Filtro por tipo de uso
     if (tipo) {
       try {
         if (mongoose.Types.ObjectId.isValid(tipo)) {
           query.tipo = tipo;
         } else {
-          const tipoObj = await Tipo.findOne({ name: tipo }); // Asume que el modelo Tipo tiene un campo 'name'
+          const tipoObj = await Tipo.findOne({ name: { $regex: tipo, $options: 'i' } });
           if (tipoObj) {
             query.tipo = tipoObj._id;
           } else {
@@ -125,14 +158,15 @@ const productosController = {
         return res.status(500).json({ message: "Error interno al procesar el tipo." });
       }
     }
-    // --- FIN CAMBIOS PARA MARCA Y TIPO ---
 
+    // Filtro por rango de precios
     if (precioMin || precioMax) {
       query.price = {};
       if (precioMin) query.price.$gte = parseFloat(precioMin);
       if (precioMax) query.price.$lte = parseFloat(precioMax);
     }
 
+    // Opciones de ordenamiento
     let sortOptions = {};
     if (sortBy) {
       if (sortBy === 'Precio: Menor a Mayor') sortOptions.price = 1;
@@ -140,127 +174,34 @@ const productosController = {
     }
 
     try {
-      console.log("Query final:", query);
-      // Usamos populate para traer la información completa de la categoría, marca y tipo
+      console.log("Query final (buscarProductos):", query);
       const productos = await Producto.find(query)
         .sort(sortOptions)
         .populate('categoryId')
-        .populate('marca') // Popula la referencia a Marca
-        .populate('tipo'); // Popula la referencia a Tipo
+        .populate('marca')
+        .populate('tipo');
 
+      // Sugerencias (útiles para autocompletar)
       const sugerenciasMarca = search
         ? await Marca.find({ name: { $regex: safeSearch, $options: 'i' } }).limit(5)
         : [];
-
       const sugerenciasCategoria = search
         ? await Categoria.find({ name: { $regex: safeSearch, $options: 'i' } }).limit(5)
         : [];
-
       const sugerenciasTipo = search
         ? await Tipo.find({ name: { $regex: safeSearch, $options: 'i' } }).limit(5)
         : [];
 
-
       res.json({
         productos,
-        sugerenciasMarca: sugerenciasMarca.map(m => m.name), // Devuelve el nombre de la marca
+        sugerenciasMarca: sugerenciasMarca.map(m => ({ _id: m._id, name: m.name, image: m.image })),
         sugerenciasCategoria,
-        sugerenciasTipo: sugerenciasTipo.map(t => t.name) // Devuelve el nombre del tipo
+        sugerenciasTipo: sugerenciasTipo.map(t => ({ _id: t._id, name: t.name, image: t.image }))
       });
 
     } catch (error) {
-      console.error("Error completo:", error);
+      console.error("Error completo (buscarProductos):", error);
       res.status(500).json({ error: "Error al realizar la búsqueda de productos" });
-    }
-  },
-
-  // Opcional: Función para obtener todos los tipos de uso para poblar el frontend
-  getTodosLosTiposDeUso: async (req, res) => {
-    try {
-      console.log("Intentando obtener tipos de uso (desde campo 'tipo')...");
-      // Ahora se recomienda obtener los nombres de los tipos directamente de la colección Tipo
-      const tiposDeUso = await Tipo.find({}, 'name'); // Obtiene solo el campo 'name'
-      console.log("Tipos de uso obtenidos:", tiposDeUso);
-      res.json(tiposDeUso.map(t => t.name)); // Devuelve solo los nombres
-    } catch (error) {
-      console.error('Error al obtener tipos de uso:', error);
-      res.status(500).json({ msg: 'Error del servidor al obtener tipos de uso' });
-    }
-  },
-
-  // Obtener todos los productos (se puede modificar para filtrar por marca)
-  getProductos: async (req, res) => {
-    try {
-      const { marca } = req.query; // Obtener el parámetro de marca de la URL
-      let query = {};
-
-      if (marca) {
-        // Asumiendo que marca puede ser un ObjectId o un nombre
-        if (mongoose.Types.ObjectId.isValid(marca)) {
-          query.marca = marca;
-        } else {
-          const marcaObj = await Marca.findOne({ name: marca });
-          if (marcaObj) {
-            query.marca = marcaObj._id;
-          } else {
-            return res.status(404).json({ message: `Marca '${marca}' no encontrada.` });
-          }
-        }
-      }
-
-      const productos = await Producto.find(query)
-        .populate("categoryId")
-        .populate("marca")
-        .populate("tipo");
-      res.json(productos);
-    } catch (error) {
-      res.status(500).json({ error: error.message });
-    }
-  },
-
-  getTodasLasMarcas: async (req, res) => {
-    try {
-      // Obtenemos solo el campo 'name' de la colección Marca
-      const marcas = await Marca.find({}, 'name');
-      res.json(marcas.map(m => m.name)); // Esto devolverá un array de strings (nombres de marcas)
-    } catch (error) {
-      console.error('Error al obtener todas las marcas:', error);
-      res.status(500).json({ message: 'Error interno del servidor al obtener marcas.' });
-    }
-  },
-
-  // Nuevo controlador para obtener productos por marca específica
-  getProductosPorMarca: async (req, res) => {
-    try {
-      const { marca } = req.params; // Obtener la marca de los parámetros de la URL
-      if (!marca) {
-        return res.status(400).json({ message: "Se requiere un nombre de marca para filtrar" });
-      }
-
-      let marcaId;
-      if (mongoose.Types.ObjectId.isValid(marca)) {
-        marcaId = marca;
-      } else {
-        const marcaObj = await Marca.findOne({ name: { $regex: marca, $options: 'i' } });
-        if (marcaObj) {
-          marcaId = marcaObj._id;
-        } else {
-          return res.status(404).json({ message: `Marca "${marca}" no encontrada.` });
-        }
-      }
-
-      const productos = await Producto.find({ marca: marcaId })
-        .populate("categoryId")
-        .populate("marca")
-        .populate("tipo");
-
-      if (!productos || productos.length === 0) {
-        return res.status(404).json({ message: `No se encontraron productos para la marca "${marca}"` });
-      }
-      res.json(productos);
-    } catch (error) {
-      console.error("Error al obtener productos por marca:", error);
-      res.status(500).json({ error: "Error al obtener productos por marca" });
     }
   },
 
@@ -268,10 +209,13 @@ const productosController = {
   getProductoById: async (req, res) => {
     try {
       const { id } = req.params;
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ message: "ID de producto inválido." });
+      }
       const producto = await Producto.findById(id)
         .populate("categoryId")
-        .populate("marca") // Popula la referencia a Marca
-        .populate("tipo") // Popula la referencia a Tipo
+        .populate("marca")
+        .populate("tipo")
         .populate({
           path: 'reviews',
           populate: {
@@ -285,41 +229,27 @@ const productosController = {
       }
       res.json(producto);
     } catch (error) {
-      console.error("Error al obtener el producto:", error);
+      console.error("Error al obtener el producto por ID:", error);
       res.status(500).json({ error: error.message });
     }
   },
+
   // Actualizar producto
   updateProducto: async (req, res) => {
     try {
       const { nombre, descripcion, price, categoryId, stock, marca, tipo } = req.body;
-      const files = req.files; // multer ya llenó esto gracias al middleware en la ruta
-  
-      const imageUrls = [];
-  
-      // files es un objeto con keys según los campos, ej: { images: [...], marcaImagen: [...] }
-      // Debes manejar cada campo por separado:
-      
-      if (files) {
-        // Ejemplo para imágenes del producto
-        if (files.images) {
-          for (const file of files.images) {
-            const result = await cloudinary.uploader.upload(file.path, { folder: 'productos' });
-            imageUrls.push(result.secure_url);
-            fs.unlinkSync(file.path);
-          }
-        }
-  
-        // Ejemplo para imagen de marca (si la manejas también)
-        if (files.marcaImagen) {
-          // Si quieres subir esta imagen a cloudinary o manejarla, hazlo aquí
-          // Por ejemplo:
-          // const marcaImgResult = await cloudinary.uploader.upload(files.marcaImagen[0].path, { folder: 'marcaImagenes' });
-          // fs.unlinkSync(files.marcaImagen[0].path);
-          // Guardar URL en updateData si es necesario
+      const files = req.files; // req.files.images para el array de imágenes
+
+      let imageUrls = [];
+      // Si hay nuevas imágenes para subir, las procesamos
+      if (files && files.images && files.images.length > 0) {
+        for (const file of files.images) {
+          const result = await cloudinary.uploader.upload(file.path, { folder: 'productos' });
+          imageUrls.push(result.secure_url);
+          fs.unlinkSync(file.path);
         }
       }
-  
+
       const updateData = {
         nombre,
         descripcion,
@@ -330,69 +260,61 @@ const productosController = {
         tipo,
         updatedAt: Date.now(),
       };
-  
+
+      // Solo si se subieron nuevas imágenes, actualizamos el campo 'images'
       if (imageUrls.length > 0) {
         updateData.images = imageUrls;
       }
-  
+
       const updatedProducto = await Producto.findByIdAndUpdate(
         req.params.id,
         updateData,
-        { new: true }
+        { new: true } // Para devolver el documento actualizado
       )
         .populate("categoryId")
         .populate("marca")
         .populate("tipo");
-  
+
       if (!updatedProducto) {
-        return res.status(404).json({ message: "Producto no encontrado" });
+        return res.status(404).json({ message: "Producto no encontrado para actualizar" });
       }
-  
+
       res.status(200).json({ message: "Producto actualizado", producto: updatedProducto });
     } catch (error) {
-      res.status(500).json({ error: error.message });
-    }
-  },
-  
-
-  // Activar producto
-  activarProducto: async (req, res) => {
-    try {
-      const { id } = req.params;
-      const producto = await Producto.findByIdAndUpdate(id, { estado: 'activo' }, { new: true })
-        .populate("categoryId")
-        .populate("marca")
-        .populate("tipo");
-      if (!producto) return res.status(404).json({ message: "Producto no encontrado" });
-      res.status(200).json({ message: "Producto activado correctamente", producto });
-    } catch (error) {
+      console.error("Error al actualizar producto:", error);
       res.status(500).json({ error: error.message });
     }
   },
 
-  // Inactivar producto
-  inactivarProducto: async (req, res) => {
+  // Cambiar estado de un producto (activo/inactivo)
+  changeProductoEstado: async (req, res) => {
     try {
       const { id } = req.params;
-      const producto = await Producto.findByIdAndUpdate(id, { estado: 'inactivo' }, { new: true })
+      const { estado } = req.body; // Se espera 'estado' en el body
+
+      if (!['activo', 'inactivo'].includes(estado)) {
+        return res.status(400).json({ message: "Estado no válido. Debe ser 'activo' o 'inactivo'." });
+      }
+
+      const producto = await Producto.findByIdAndUpdate(id, { estado }, { new: true })
         .populate("categoryId")
         .populate("marca")
         .populate("tipo");
+
       if (!producto) return res.status(404).json({ message: "Producto no encontrado" });
-      res.status(200).json({ message: "Producto inactivado correctamente", producto });
+
+      res.status(200).json({ message: `Producto puesto en estado '${estado}' correctamente`, producto });
     } catch (error) {
+      console.error("Error al cambiar el estado del producto:", error);
       res.status(500).json({ error: error.message });
-    } 
+    }
   },
 
   // Agregar reseña a un producto
   agregarReseña: async (req, res) => {
-    console.log('*** Llegó a agregarReseña ***');
-    console.log('req.params.id:', req.params.id);
-    console.log('req.body:', req.body);
     const { id } = req.params; // ID del producto
     const { comment, rating } = req.body;
-    const userId = req.usuario._id;
+    const userId = req.usuario._id; // Asumiendo que ValidarJWT adjunta el usuario a req.usuario
     const userName = req.usuario.name;
 
     try {
@@ -401,7 +323,7 @@ const productosController = {
 
       const nuevaReseña = {
         user: userId,
-        name: userName, // Usando userName directamente del req.usuario
+        name: userName,
         comment,
         rating,
       };
@@ -411,13 +333,14 @@ const productosController = {
 
       res.status(201).json({ message: "Reseña agregada", review: nuevaReseña });
     } catch (error) {
+      console.error("Error al agregar reseña:", error);
       res.status(500).json({ error: error.message });
     }
   },
 
   // Eliminar una reseña de un producto
   eliminarReseña: async (req, res) => {
-    const { id: productId, reviewId } = req.params; // ID del producto y de la reseña
+    const { id: productId, reviewId } = req.params; // ID del producto y ID de la reseña
     const userId = req.usuario._id;
 
     try {
@@ -426,7 +349,6 @@ const productosController = {
         return res.status(404).json({ message: "Producto no encontrado" });
       }
 
-      // Encontrar la reseña que coincide con el ID y el usuario
       const reviewIndex = producto.reviews.findIndex(
         (review) => review._id.toString() === reviewId && review.user.toString() === userId.toString()
       );
@@ -435,8 +357,7 @@ const productosController = {
         return res.status(404).json({ message: "Reseña no encontrada o no pertenece al usuario" });
       }
 
-      // Eliminar la reseña del array
-      producto.reviews.splice(reviewIndex, 1);
+      producto.reviews.splice(reviewIndex, 1); // Eliminar la reseña del array
       await producto.save();
 
       res.status(200).json({ message: "Reseña eliminada exitosamente" });
@@ -446,18 +367,22 @@ const productosController = {
     }
   },
 
-  // Obtener productos por categoría
+  // Obtener productos por categoría (usando categoryId del parámetro de ruta)
   getProductosPorCategoria: async (req, res) => {
-    const { categoriaId } = req.params; // Obtiene el ID de la categoría de los parámetros de la URL
-    console.log("categoriaId recibido:", categoriaId); // Añade este log
+    const { categoriaId } = req.params;
     try {
+      // Validar si el ID es un ObjectId válido de Mongoose
+      if (!mongoose.Types.ObjectId.isValid(categoriaId)) {
+        return res.status(400).json({ message: "ID de categoría inválido." });
+      }
+
       const productos = await Producto.find({ categoryId: categoriaId })
         .populate("categoryId")
         .populate("marca")
         .populate("tipo");
-      console.log("Productos encontrados:", productos); // Añade este log
+
       if (!productos || productos.length === 0) {
-        return res.status(404).json({ message: "No se encontraron productos para esta categoría" });
+        return res.status(200).json({ message: "No se encontraron productos para esta categoría", productos: [] });
       }
       res.json(productos);
     } catch (error) {
@@ -466,34 +391,69 @@ const productosController = {
     }
   },
 
-  // ... (tu código existente del controlador)
+  // -- ¡IMPORTANTE! Función para obtener LOS PRODUCTOS de una MARCA (la que usa tu VistaMarca.vue para el listado)
+  getProductosDeMarcaId: async (req, res) => {
+    try {
+      const { id } = req.params; // El ID de la marca viene como parámetro de ruta
 
-// Agrega esta nueva función al objeto productosController
-changeProductoEstado: async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { estado } = req.body; // ← ahora viene del body
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ message: "ID de marca inválido." });
+      }
 
-    if (!['activo', 'inactivo'].includes(estado)) {
-      return res.status(400).json({ message: "Estado no válido. Debe ser 'activo' o 'inactivo'." });
+      const productos = await Producto.find({ marca: id })
+        .populate("categoryId")
+        .populate("marca") // Para popular el objeto de la marca
+        .populate("tipo");
+
+      if (!productos || productos.length === 0) {
+        return res.status(200).json({ message: `No se encontraron productos para la marca con ID: ${id}`, productos: [] });
+      }
+      res.json(productos); // Devuelve la lista de productos
+    } catch (error) {
+      console.error("Error al obtener productos por ID de marca:", error);
+      res.status(500).json({ error: "Error al obtener productos por marca" });
     }
+  },
 
-    const producto = await Producto.findByIdAndUpdate(id, { estado }, { new: true })
-      .populate("categoryId")
-      .populate("marca")
-      .populate("tipo");
+  // -- ¡IMPORTANTE! Función para obtener los DETALLES de una MARCA (la que usa tu VistaMarca.vue para el título)
+  getMarcaById: async (req, res) => {
+    try {
+      const { id } = req.params;
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ message: "ID de marca inválido." });
+      }
+      const marca = await Marca.findById(id);
+      if (!marca) {
+        return res.status(404).json({ message: 'Marca no encontrada.' });
+      }
+      res.json(marca); // Devuelve el objeto COMPLETO de la marca
+    } catch (error) {
+      console.error('Error al obtener marca por ID (desde productosController):', error);
+      res.status(500).json({ message: 'Error del servidor al obtener la marca.' });
+    }
+  },
 
-    if (!producto) return res.status(404).json({ message: "Producto no encontrado" });
+  // Obtener todas las marcas
+  getTodasLasMarcas: async (req, res) => {
+    try {
+      const marcas = await Marca.find({});
+      res.json(marcas);
+    } catch (error) {
+      console.error('Error al obtener todas las marcas:', error);
+      res.status(500).json({ message: 'Error interno del servidor al obtener marcas.' });
+    }
+  },
 
-    res.status(200).json({ message: `Producto puesto en estado '${estado}' correctamente`, producto });
-  } catch (error) {
-    console.error("Error al cambiar el estado del producto:", error);
-    res.status(500).json({ error: error.message });
-  }
-},
-
-
-// ... (el resto de tu código del controlador)
+  // Obtener todos los tipos de uso
+  getTodosLosTiposDeUso: async (req, res) => {
+    try {
+      const tiposDeUso = await Tipo.find({});
+      res.json(tiposDeUso);
+    } catch (error) {
+      console.error('Error al obtener tipos de uso:', error);
+      res.status(500).json({ msg: 'Error del servidor al obtener tipos de uso' });
+    }
+  },
 };
 
 export default productosController;
