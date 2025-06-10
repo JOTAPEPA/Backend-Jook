@@ -22,40 +22,54 @@ const upload = multer({ storage }).array('images', 4);
 
 const productosController = {
   // Crear producto
-  createProducto: async (req, res) => {
-    try {
-      const { nombre, descripcion, price, categoryId, stock, marca, tipo } = req.body;
+  // En tu controlador productosController.js
 
-      const files = req.files || []; // Asegúrate de que req.files exista
-      const imageUrls = [];
+createProducto: async (req, res) => {
+  try {
+    const { nombre, descripcion, price, categoryId, stock, marca, tipo } = req.body;
 
-      // Si hay archivos para subir
-      if (files.length > 0) {
-        for (const file of files) {
-          const result = await cloudinary.uploader.upload(file.path, { folder: 'productos' });
-          imageUrls.push(result.secure_url);
-          fs.unlinkSync(file.path); // Eliminar el archivo temporal
-        }
+    // --- ¡CAMBIO CLAVE AQUÍ! ---
+    // Si estás usando `uploadFields` (multer().fields) en tu ruta,
+    // `req.files` es un objeto, y las imágenes de producto están en `req.files.images`.
+    const productImages = req.files.images || []; // Accede al array de imágenes del producto
+    const imageUrls = [];
+
+    // Subir las imágenes del producto a Cloudinary
+    if (productImages.length > 0) {
+      for (const file of productImages) {
+        const result = await cloudinary.uploader.upload(file.path, { folder: 'productos' });
+        imageUrls.push(result.secure_url);
+        fs.unlinkSync(file.path); // Eliminar el archivo temporal
       }
-
-      const producto = new Producto({
-        nombre,
-        descripcion,
-        price,
-        categoryId,
-        stock,
-        marca, // Asegúrate de que este 'marca' sea un ID de Marca
-        tipo,  // Asegúrate de que este 'tipo' sea un ID de Tipo
-        images: imageUrls,
-      });
-
-      await producto.save();
-      res.status(201).json({ message: "Producto creado exitosamente", producto });
-    } catch (error) {
-      console.error("Error al crear producto:", error);
-      res.status(500).json({ error: error.message });
     }
-  },
+
+    // Si también manejas la imagen de la marca al crear un producto (desde el mismo formulario)
+    const marcaImageFile = req.files.marcaImagen ? req.files.marcaImagen[0] : null;
+    let marcaImageUrl = null;
+    if (marcaImageFile) {
+        const result = await cloudinary.uploader.upload(marcaImageFile.path, { folder: 'marcas' });
+        marcaImageUrl = result.secure_url;
+        fs.unlinkSync(marcaImageFile.path);
+    }
+
+    const producto = new Producto({
+      nombre,
+      descripcion,
+      price,
+      categoryId,
+      stock,
+      marca,
+      tipo,
+      images: imageUrls, // Asigna las URLs de las imágenes subidas
+    });
+
+    await producto.save();
+    res.status(201).json({ message: "Producto creado exitosamente", producto });
+  } catch (error) {
+    console.error("Error al crear producto:", error);
+    res.status(500).json({ error: error.message });
+  }
+},
 
   // Obtener todos los productos (con posible filtro por marca en query)
   getProductos: async (req, res) => {
