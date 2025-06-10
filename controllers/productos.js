@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import Producto from "../Models/productos.js";
 import Categoria from "../Models/categoria.js";
-import Marca from "../Models/marca.js"; // Importa el modelo Marca
+import Marca from "../Models/marca.js";
 import Tipo from "../Models/tipo.js";
 import multer from "multer";
 import fs from "fs";
@@ -22,53 +22,66 @@ const upload = multer({ storage }).array('images', 4);
 
 const productosController = {
   // Crear producto
-  createProducto: async (req, res) => {
-    try {
-      const { nombre, descripcion, price, categoryId, stock, marca, tipo } = req.body;
+  // En tu controlador productosController.js
 
-      const files = req.files || []; // Asegúrate de que req.files exista
-      const imageUrls = [];
+createProducto: async (req, res) => {
+  try {
+    const { nombre, descripcion, price, categoryId, stock, marca, tipo } = req.body;
 
-      // Si hay archivos para subir
-      if (files.length > 0) {
-        for (const file of files) {
-          const result = await cloudinary.uploader.upload(file.path, { folder: 'productos' });
-          imageUrls.push(result.secure_url);
-          fs.unlinkSync(file.path); // Eliminar el archivo temporal
-        }
+    // --- ¡CAMBIO CLAVE AQUÍ! ---
+    // Si estás usando `uploadFields` (multer().fields) en tu ruta,
+    // `req.files` es un objeto, y las imágenes de producto están en `req.files.images`.
+    const productImages = req.files.images || []; // Accede al array de imágenes del producto
+    const imageUrls = [];
+
+    // Subir las imágenes del producto a Cloudinary
+    if (productImages.length > 0) {
+      for (const file of productImages) {
+        const result = await cloudinary.uploader.upload(file.path, { folder: 'productos' });
+        imageUrls.push(result.secure_url);
+        fs.unlinkSync(file.path); // Eliminar el archivo temporal
       }
-
-      const producto = new Producto({
-        nombre,
-        descripcion,
-        price,
-        categoryId,
-        stock,
-        marca, // Asegúrate de que este 'marca' sea un ID de Marca
-        tipo,  // Asegúrate de que este 'tipo' sea un ID de Tipo
-        images: imageUrls,
-      });
-
-      await producto.save();
-      res.status(201).json({ message: "Producto creado exitosamente", producto });
-    } catch (error) {
-      console.error("Error al crear producto:", error);
-      res.status(500).json({ error: error.message });
     }
-  },
+
+    // Si también manejas la imagen de la marca al crear un producto (desde el mismo formulario)
+    const marcaImageFile = req.files.marcaImagen ? req.files.marcaImagen[0] : null;
+    let marcaImageUrl = null;
+    if (marcaImageFile) {
+        const result = await cloudinary.uploader.upload(marcaImageFile.path, { folder: 'marcas' });
+        marcaImageUrl = result.secure_url;
+        fs.unlinkSync(marcaImageFile.path);
+    }
+
+    const producto = new Producto({
+      nombre,
+      descripcion,
+      price,
+      categoryId,
+      stock,
+      marca,
+      tipo,
+      images: imageUrls, // Asigna las URLs de las imágenes subidas
+    });
+
+    await producto.save();
+    res.status(201).json({ message: "Producto creado exitosamente", producto });
+  } catch (error) {
+    console.error("Error al crear producto:", error);
+    res.status(500).json({ error: error.message });
+  }
+},
 
   // Obtener todos los productos (con posible filtro por marca en query)
   getProductos: async (req, res) => {
     try {
-      const { marca } = req.query;
+      const { marca, categoria, tipo, estado, ofertaActiva } = req.query;
       let query = {};
 
       if (marca) {
-        // Permitir filtrar por ID o nombre de marca en la query string
         if (mongoose.Types.ObjectId.isValid(marca)) {
           query.marca = marca;
         } else {
-          const marcaObj = await Marca.findOne({ name: { $regex: marca, $options: 'i' } }); // Búsqueda por nombre
+          const marcaObj = await Marca.findOne({ name: { $regex: marca, $options: 'i' } });
           if (marcaObj) {
             query.marca = marcaObj._id;
           } else {
@@ -77,14 +90,60 @@ const productosController = {
         }
       }
 
+      if (categoria) {
+        if (mongoose.Types.ObjectId.isValid(categoria)) {
+          query.categoryId = categoria;
+        } else {
+          const categoriaObj = await Categoria.findOne({ name: { $regex: categoria, $options: 'i' } });
+          if (categoriaObj) {
+            query.categoryId = categoriaObj._id;
+          } else {
+            return res.status(404).json({ message: `Categoría '${categoria}' no encontrada para el filtro.` });
+          }
+        }
+      }
+
+      if (tipo) {
+        if (mongoose.Types.ObjectId.isValid(tipo)) {
+          query.tipo = tipo;
+        } else {
+          const tipoObj = await Tipo.findOne({ name: { $regex: tipo, $options: 'i' } });
+          if (tipoObj) {
+            query.tipo = tipoObj._id;
+          } else {
+            return res.status(404).json({ message: `Tipo '${tipo}' no encontrado para el filtro.` });
+          }
+        }
+      }
+
+      if (estado) {
+        if (['activo', 'inactivo'].includes(estado.toLowerCase())) {
+          query.estado = estado.toLowerCase();
+        } else {
+          return res.status(400).json({ message: 'El estado debe ser "activo" o "inactivo".' });
+        }
+      }
+
+      // Filtro para ofertas activas
+      if (ofertaActiva === 'true') {
+        query['oferta.activa'] = true;
+        query['oferta.fechaInicio'] = { $lte: new Date() };
+        query['oferta.fechaFin'] = { $gte: new Date() };
+      }
+
       const productos = await Producto.find(query)
         .populate("categoryId")
         .populate("marca")
         .populate("tipo");
-      res.json(productos);
+
+      if (productos.length === 0) {
+        return res.status(404).json({ message: 'No se encontraron productos con los criterios especificados.' });
+      }
+
+      res.status(200).json(productos);
     } catch (error) {
       console.error("Error al obtener productos:", error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ message: 'Error interno del servidor al obtener productos.', error: error.message });
     }
   },
 
@@ -93,14 +152,14 @@ const productosController = {
     const { search, marca, precioMin, precioMax, sortBy, tipo, categoria } = req.query;
     const safeSearch = String(search || '');
     let query = {};
-  
+
     if (search) {
       query.$or = [
         { nombre: { $regex: safeSearch, $options: 'i' } },
         { descripcion: { $regex: safeSearch, $options: 'i' } },
       ];
     }
-  
+
     // Filtro por categoría
     const categoriaIdParam = categoria || req.query.categoryId;
     if (categoriaIdParam) {
@@ -108,7 +167,6 @@ const productosController = {
         if (mongoose.Types.ObjectId.isValid(categoriaIdParam)) {
           query.categoryId = categoriaIdParam;
         } else {
-          // Aquí usas 'name' porque en categoría el campo es 'name'
           const categoriaObj = await Categoria.findOne({ name: { $regex: categoriaIdParam, $options: 'i' } });
           if (categoriaObj) {
             query.categoryId = categoriaObj._id;
@@ -121,14 +179,13 @@ const productosController = {
         return res.status(500).json({ message: "Error interno al procesar la categoría." });
       }
     }
-  
+
     // Filtro por marca
     if (marca) {
       try {
         if (mongoose.Types.ObjectId.isValid(marca)) {
           query.marca = marca;
         } else {
-          // En marca usas 'nombre'
           const marcaObj = await Marca.findOne({ nombre: { $regex: marca, $options: 'i' } });
           if (marcaObj) {
             query.marca = marcaObj._id;
@@ -141,14 +198,13 @@ const productosController = {
         return res.status(500).json({ message: "Error interno al procesar la marca." });
       }
     }
-  
+
     // Filtro por tipo
     if (tipo) {
       try {
         if (mongoose.Types.ObjectId.isValid(tipo)) {
           query.tipo = tipo;
         } else {
-          // En tipo usas 'nombre'
           const tipoObj = await Tipo.findOne({ nombre: { $regex: tipo, $options: 'i' } });
           if (tipoObj) {
             query.tipo = tipoObj._id;
@@ -161,21 +217,21 @@ const productosController = {
         return res.status(500).json({ message: "Error interno al procesar el tipo." });
       }
     }
-  
+
     // Filtro por precio
     if (precioMin || precioMax) {
       query.price = {};
       if (precioMin) query.price.$gte = parseFloat(precioMin);
       if (precioMax) query.price.$lte = parseFloat(precioMax);
     }
-  
+
     // Ordenamiento
     let sortOptions = {};
     if (sortBy) {
       if (sortBy === 'Precio: Menor a Mayor') sortOptions.price = 1;
       else if (sortBy === 'Precio: Mayor a Menor') sortOptions.price = -1;
     }
-  
+
     try {
       console.log("Query final (buscarProductos):", query);
       const productos = await Producto.find(query)
@@ -183,7 +239,7 @@ const productosController = {
         .populate('categoryId')
         .populate('marca')
         .populate('tipo');
-  
+
       // Sugerencias (autocomplete)
       const sugerenciasMarca = search
         ? await Marca.find({ nombre: { $regex: safeSearch, $options: 'i' } }).limit(5)
@@ -194,21 +250,21 @@ const productosController = {
       const sugerenciasTipo = search
         ? await Tipo.find({ nombre: { $regex: safeSearch, $options: 'i' } }).limit(5)
         : [];
-  
+
       res.json({
         productos,
         sugerenciasMarca: sugerenciasMarca.map(m => ({ _id: m._id, nombre: m.nombre, image: m.image })),
         sugerenciasCategoria,
         sugerenciasTipo: sugerenciasTipo.map(t => ({ _id: t._id, nombre: t.nombre, image: t.image }))
       });
-  
+
     } catch (error) {
       console.error("Error completo (buscarProductos):", error);
       res.status(500).json({ error: "Error al realizar la búsqueda de productos" });
     }
   },
-  
-  
+
+
   // Obtener un producto por ID
   getProductoById: async (req, res) => {
     try {
@@ -242,10 +298,9 @@ const productosController = {
   updateProducto: async (req, res) => {
     try {
       const { nombre, descripcion, price, categoryId, stock, marca, tipo } = req.body;
-      const files = req.files; // req.files.images para el array de imágenes
+      const files = req.files;
 
       let imageUrls = [];
-      // Si hay nuevas imágenes para subir, las procesamos
       if (files && files.images && files.images.length > 0) {
         for (const file of files.images) {
           const result = await cloudinary.uploader.upload(file.path, { folder: 'productos' });
@@ -265,7 +320,6 @@ const productosController = {
         updatedAt: Date.now(),
       };
 
-      // Solo si se subieron nuevas imágenes, actualizamos el campo 'images'
       if (imageUrls.length > 0) {
         updateData.images = imageUrls;
       }
@@ -273,7 +327,7 @@ const productosController = {
       const updatedProducto = await Producto.findByIdAndUpdate(
         req.params.id,
         updateData,
-        { new: true } // Para devolver el documento actualizado
+        { new: true }
       )
         .populate("categoryId")
         .populate("marca")
@@ -294,7 +348,7 @@ const productosController = {
   changeProductoEstado: async (req, res) => {
     try {
       const { id } = req.params;
-      const { estado } = req.body; // Se espera 'estado' en el body
+      const { estado } = req.body;
 
       if (!['activo', 'inactivo'].includes(estado)) {
         return res.status(400).json({ message: "Estado no válido. Debe ser 'activo' o 'inactivo'." });
@@ -316,9 +370,9 @@ const productosController = {
 
   // Agregar reseña a un producto
   agregarReseña: async (req, res) => {
-    const { id } = req.params; // ID del producto
+    const { id } = req.params;
     const { comment, rating } = req.body;
-    const userId = req.usuario._id; // Asumiendo que ValidarJWT adjunta el usuario a req.usuario
+    const userId = req.usuario._id;
     const userName = req.usuario.name;
 
     try {
@@ -344,7 +398,7 @@ const productosController = {
 
   // Eliminar una reseña de un producto
   eliminarReseña: async (req, res) => {
-    const { id: productId, reviewId } = req.params; // ID del producto y ID de la reseña
+    const { id: productId, reviewId } = req.params;
     const userId = req.usuario._id;
 
     try {
@@ -361,7 +415,7 @@ const productosController = {
         return res.status(404).json({ message: "Reseña no encontrada o no pertenece al usuario" });
       }
 
-      producto.reviews.splice(reviewIndex, 1); // Eliminar la reseña del array
+      producto.reviews.splice(reviewIndex, 1);
       await producto.save();
 
       res.status(200).json({ message: "Reseña eliminada exitosamente" });
@@ -375,7 +429,6 @@ const productosController = {
   getProductosPorCategoria: async (req, res) => {
     const { categoriaId } = req.params;
     try {
-      // Validar si el ID es un ObjectId válido de Mongoose
       if (!mongoose.Types.ObjectId.isValid(categoriaId)) {
         return res.status(400).json({ message: "ID de categoría inválido." });
       }
@@ -395,10 +448,10 @@ const productosController = {
     }
   },
 
-  // -- ¡IMPORTANTE! Función para obtener LOS PRODUCTOS de una MARCA (la que usa tu VistaMarca.vue para el listado)
+  // Función para obtener LOS PRODUCTOS de una MARCA (la que usa tu VistaMarca.vue para el listado)
   getProductosDeMarcaId: async (req, res) => {
     try {
-      const { id } = req.params; // El ID de la marca viene como parámetro de ruta
+      const { id } = req.params;
 
       if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({ message: "ID de marca inválido." });
@@ -406,20 +459,20 @@ const productosController = {
 
       const productos = await Producto.find({ marca: id })
         .populate("categoryId")
-        .populate("marca") // Para popular el objeto de la marca
+        .populate("marca")
         .populate("tipo");
 
       if (!productos || productos.length === 0) {
         return res.status(200).json({ message: `No se encontraron productos para la marca con ID: ${id}`, productos: [] });
       }
-      res.json(productos); // Devuelve la lista de productos
+      res.json(productos);
     } catch (error) {
       console.error("Error al obtener productos por ID de marca:", error);
       res.status(500).json({ error: "Error al obtener productos por marca" });
     }
   },
 
-  // -- ¡IMPORTANTE! Función para obtener los DETALLES de una MARCA (la que usa tu VistaMarca.vue para el título)
+  // Función para obtener los DETALLES de una MARCA (la que usa tu VistaMarca.vue para el título)
   getMarcaById: async (req, res) => {
     try {
       const { id } = req.params;
@@ -430,7 +483,7 @@ const productosController = {
       if (!marca) {
         return res.status(404).json({ message: 'Marca no encontrada.' });
       }
-      res.json(marca); // Devuelve el objeto COMPLETO de la marca
+      res.json(marca);
     } catch (error) {
       console.error('Error al obtener marca por ID (desde productosController):', error);
       res.status(500).json({ message: 'Error del servidor al obtener la marca.' });
@@ -458,6 +511,150 @@ const productosController = {
       res.status(500).json({ msg: 'Error del servidor al obtener tipos de uso' });
     }
   },
+
+  activarOferta: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { porcentaje, fechaInicio, fechaFin } = req.body;
+
+      if (porcentaje === undefined || porcentaje < 0 || porcentaje > 100) {
+        return res.status(400).json({ message: 'El porcentaje de oferta debe ser un número entre 0 y 100.' });
+      }
+
+      const producto = await Producto.findById(id);
+
+      if (!producto) {
+        return res.status(404).json({ message: 'Producto no encontrado.' });
+      }
+
+      const precioOferta = producto.price * (1 - porcentaje / 100);
+
+      producto.oferta = {
+        activa: true,
+        porcentaje,
+        precioOferta: precioOferta.toFixed(2),
+        fechaInicio: fechaInicio || new Date(),
+        fechaFin: fechaFin || new Date(new Date().setFullYear(new Date().getFullYear() + 1)),
+      };
+
+      producto.updatedAt = Date.now();
+      await producto.save();
+
+      res.status(200).json({
+        message: 'Oferta activada/actualizada exitosamente.',
+        producto: producto.oferta
+      });
+
+    } catch (error) {
+      console.error('Error al activar oferta:', error);
+      res.status(500).json({ message: 'Error interno del servidor al activar la oferta.', error: error.message });
+    }
+  },
+
+
+  desactivarOferta: async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const producto = await Producto.findById(id);
+
+      if (!producto) {
+        return res.status(404).json({ message: 'Producto no encontrado.' });
+      }
+
+      producto.oferta = {
+        activa: false,
+        porcentaje: undefined,
+        precioOferta: undefined,
+        fechaInicio: undefined,
+        fechaFin: undefined,
+      };
+
+      producto.updatedAt = Date.now();
+      await producto.save();
+
+      res.status(200).json({ message: 'Oferta desactivada exitosamente para el producto.', producto: producto.oferta });
+
+    } catch (error) {
+      console.error('Error al desactivar oferta:', error);
+      res.status(500).json({ message: 'Error interno del servidor al desactivar la oferta.', error: error.message });
+    }
+  },
+
+
+  getProductosConOfertasActivas: async (req, res) => {
+    try {
+      const productosConOfertas = await Producto.find({
+        'oferta.activa': true,
+        'oferta.fechaInicio': { $lte: new Date() },
+        'oferta.fechaFin': { $gte: new Date() }
+      })
+        .populate("categoryId")
+        .populate("marca")
+        .populate("tipo");
+
+      if (productosConOfertas.length === 0) {
+        return res.status(404).json({ message: 'No se encontraron productos con ofertas activas en este momento.' });
+      }
+
+      res.status(200).json({
+        message: 'Productos con ofertas activas obtenidos exitosamente.',
+        total: productosConOfertas.length,
+        productos: productosConOfertas.map(producto => ({
+          _id: producto._id,
+          nombre: producto.nombre,
+          precioOriginal: producto.price,
+          oferta: producto.oferta,
+          categoria: producto.categoryId ? producto.categoryId.name : null,
+          marca: producto.marca ? producto.marca.name : null,
+          tipo: producto.tipo ? producto.tipo.name : null,
+        }))
+      });
+
+    } catch (error) {
+      console.error('Error al obtener productos con ofertas activas:', error);
+      res.status(500).json({ message: 'Error interno del servidor al obtener productos con ofertas.', error: error.message });
+    }
+  },
+
+
+  getEstadoOfertaProducto: async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const producto = await Producto.findById(id).select('nombre price oferta');
+
+      if (!producto) {
+        return res.status(404).json({ message: 'Producto no encontrado.' });
+      }
+
+      const ofertaActivaAhora = producto.oferta.activa &&
+        producto.oferta.fechaInicio &&
+        producto.oferta.fechaFin &&
+        new Date() >= new Date(producto.oferta.fechaInicio) &&
+        new Date() <= new Date(producto.oferta.fechaFin);
+
+      if (ofertaActivaAhora) {
+        res.status(200).json({
+          message: 'Producto con oferta activa.',
+          nombre: producto.nombre,
+          precioOriginal: producto.price,
+          oferta: producto.oferta
+        });
+      } else {
+        res.status(200).json({
+          message: 'El producto no tiene una oferta activa en este momento.',
+          nombre: producto.nombre,
+          precioOriginal: producto.price,
+          oferta: { activa: false }
+        });
+      }
+
+    } catch (error) {
+      console.error('Error al obtener estado de oferta de producto:', error);
+      res.status(500).json({ message: 'Error interno del servidor al obtener el estado de la oferta.', error: error.message });
+    }
+  }
 };
 
 export default productosController;
