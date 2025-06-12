@@ -12,6 +12,7 @@ import tipo from './routes/tipo.js';
 import usuarios from './routes/usuarios.js';
 import paymentRoutes from './routes/paymentRoutes.js';
 import { initPayPalClient } from './utils/paypalClient.js';
+import './Models/User.js';
 
 
 // 1️⃣ Cargar variables de entorno
