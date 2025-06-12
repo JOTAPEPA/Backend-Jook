@@ -28,10 +28,7 @@ createProducto: async (req, res) => {
   try {
     const { nombre, descripcion, price, categoryId, stock, marca, tipo } = req.body;
 
-    // --- ¡CAMBIO CLAVE AQUÍ! ---
-    // Si estás usando `uploadFields` (multer().fields) en tu ruta,
-    // `req.files` es un objeto, y las imágenes de producto están en `req.files.images`.
-    const productImages = req.files.images || []; // Accede al array de imágenes del producto
+    const productImages = req.files.images || []; 
     const imageUrls = [];
 
     // Subir las imágenes del producto a Cloudinary
@@ -512,45 +509,48 @@ createProducto: async (req, res) => {
     }
   },
 
-  activarOferta: async (req, res) => {
-    try {
-      const { id } = req.params;
-      const { porcentaje, fechaInicio, fechaFin } = req.body;
+// ... (código anterior) ...
 
-      if (porcentaje === undefined || porcentaje < 0 || porcentaje > 100) {
-        return res.status(400).json({ message: 'El porcentaje de oferta debe ser un número entre 0 y 100.' });
-      }
+activarOferta: async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { porcentaje, fechaInicio, fechaFin } = req.body;
 
-      const producto = await Producto.findById(id);
-
-      if (!producto) {
-        return res.status(404).json({ message: 'Producto no encontrado.' });
-      }
-
-      const precioOferta = producto.price * (1 - porcentaje / 100);
-
-      producto.oferta = {
-        activa: true,
-        porcentaje,
-        precioOferta: precioOferta.toFixed(2),
-        fechaInicio: fechaInicio || new Date(),
-        fechaFin: fechaFin || new Date(new Date().setFullYear(new Date().getFullYear() + 1)),
-      };
-
-      producto.updatedAt = Date.now();
-      await producto.save();
-
-      res.status(200).json({
-        message: 'Oferta activada/actualizada exitosamente.',
-        producto: producto.oferta
-      });
-
-    } catch (error) {
-      console.error('Error al activar oferta:', error);
-      res.status(500).json({ message: 'Error interno del servidor al activar la oferta.', error: error.message });
+    if (porcentaje === undefined || porcentaje < 0 || porcentaje > 100) {
+      return res.status(400).json({ message: 'El porcentaje de oferta debe ser un número entre 0 y 100.' });
     }
-  },
 
+    const producto = await Producto.findById(id);
+
+    if (!producto) {
+      return res.status(404).json({ message: 'Producto no encontrado.' });
+    }
+
+    const precioOferta = producto.price * (1 - porcentaje / 100);
+
+    producto.oferta = {
+      activa: true,
+      porcentaje,
+      precioOferta: precioOferta, // <--- ¡CORREGIDO: Ya no se usa .toFixed(2)!
+      fechaInicio: fechaInicio || new Date(),
+      fechaFin: fechaFin || new Date(new Date().setFullYear(new Date().getFullYear() + 1)),
+    };
+
+    producto.updatedAt = Date.now();
+    await producto.save();
+
+    res.status(200).json({
+      message: 'Oferta activada/actualizada exitosamente.',
+      producto: producto.oferta // Esto devolverá la oferta como número
+    });
+
+  } catch (error) {
+    console.error('Error al activar oferta:', error);
+    res.status(500).json({ message: 'Error interno del servidor al activar la oferta.', error: error.message });
+  }
+},
+
+// ... (resto de tus controladores) ...
 
   desactivarOferta: async (req, res) => {
     try {
