@@ -10,8 +10,17 @@ const productoSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
   categoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'Categoria' },
-  marca: {  type: mongoose.Schema.Types.ObjectId, ref: 'Marca' },
-  tipo: {  type: mongoose.Schema.Types.ObjectId, ref: 'Tipo'},
+  marca: { type: mongoose.Schema.Types.ObjectId, ref: 'Marca' },
+  tipo: { type: mongoose.Schema.Types.ObjectId, ref: 'Tipo' },
+
+  oferta: {
+    activa: { type: Boolean, default: false },
+    porcentaje: { type: Number, min: 0, max: 100 },
+    precioOferta: { type: Number },
+    fechaInicio: { type: Date },
+    fechaFin: { type: Date },
+  },
+
   reviews: [
     {
       user: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario', required: true },
@@ -24,3 +33,4 @@ const productoSchema = new mongoose.Schema({
 });
 
 export default mongoose.model("productos", productoSchema);
+
