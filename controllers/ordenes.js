@@ -36,6 +36,30 @@ const ordenesController = {
     }
   },
 
+  getOrdersByUser: async (req, res) => {
+    try {
+      const userId = req.params.userId; // Captura el ID del usuario de la URL
+      // Busca órdenes donde 'usuarioId' coincide con el ID proporcionado
+      const orders = await Orden.find({ usuarioId: userId })
+        .populate({
+          path: 'productos.productId', // Esto es CLAVE para obtener los detalles del producto
+          select: 'nombre imagen' // Solo trae 'nombre' e 'imagen' del producto
+        })
+        .sort({ createdAt: -1 }); // Opcional: ordenar por las más recientes primero
+
+      if (!orders || orders.length === 0) {
+        // Devuelve 200 OK con un arreglo vacío si no hay órdenes, o 404 si prefieres.
+        // Un 200 con array vacío es más común para "no hay resultados".
+        return res.status(200).json([]);
+      }
+
+      res.status(200).json(orders);
+    } catch (error) {
+      console.error('Error al obtener órdenes del usuario:', error);
+      res.status(500).json({ message: 'Error interno del servidor', error: error.message });
+    }
+  },
+
   // Editar una orden
   updateOrden: async (req, res) => {
     try {
