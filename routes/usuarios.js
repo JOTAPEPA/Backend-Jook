@@ -9,6 +9,7 @@ const upload = multer({ dest: "uploads/" });
 const router = Router();
 
 router.post("/", usuariosController.createUser);
+router.get('/usuarios/search', usuariosController.searchUsers);
 router.post("/login", usuariosController.loginUsuario); 
 router.get("/perfil/:id", ValidarJWT.validarJWT, usuariosController.getProfile);
 router.get("/favoritos", ValidarJWT.validarJWT, usuariosController.getFavoritos); // Mover antes
